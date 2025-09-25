@@ -68,7 +68,7 @@ public class PatientSelectionForm implements Authenticator {
 	private static final String SMART_SCOPE_PATIENT_READ = "patient/Patient.read";
 	private static final String SMART_SCOPE_LAUNCH_PATIENT = "launch/patient";
 
-	private static final String ATTRIBUTE_RESOURCE_ID = "resourceId";
+	private static final String ATTRIBUTE_RESOURCE_ID = "relatedPatients";
 
 
 	// creating the fhirContext is expensive, you only want to create it once
@@ -103,7 +103,7 @@ public class PatientSelectionForm implements Authenticator {
 
 		List<String> resourceIds = getResourceIdsForUser(context);
 		if (resourceIds.size() == 0) {
-			fail(context, "Expected user to have one or more resourceId attributes, but found none");
+			fail(context, "Expected user to have one or more relatedPatients attributes, but found none");
 			return;
 		}
 		if (resourceIds.size() == 1) {

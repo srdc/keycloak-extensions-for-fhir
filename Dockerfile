@@ -14,7 +14,7 @@ RUN mvn -B clean package -DskipTests
 
 
 # Package stage
-FROM quay.io/keycloak/keycloak:18.0.2
+FROM quay.io/keycloak/keycloak:25.0.5
 
 # This can be overridden, but without this I've found the db vendor-detection in Keycloak to be brittle
 ENV KC_HEALTH_ENABLED=true
