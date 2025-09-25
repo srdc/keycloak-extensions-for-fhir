@@ -67,9 +67,11 @@ public class PatientSelectionForm implements Authenticator {
 
 	private static final String SMART_SCOPE_PATIENT_READ = "patient/Patient.read";
 	private static final String SMART_SCOPE_LAUNCH_PATIENT = "launch/patient";
+	private static final String SMART_SCOPE_LAUNCH = "launch";
 
 	private static final String ATTRIBUTE_RESOURCE_ID = "relatedPatients";
 
+    private static final String SMART_PARAM_LAUNCH = "client_request_param_launch";
 
 	// creating the fhirContext is expensive, you only want to create it once
 	private static final FhirContext fhirCtx = FhirContext.forR4();
@@ -90,7 +92,7 @@ public class PatientSelectionForm implements Authenticator {
 		String requestedScopesString = authSession.getClientNote(OIDCLoginProtocol.SCOPE_PARAM);
 		Stream<ClientScopeModel> clientScopes = TokenManager.getRequestedClientScopes(requestedScopesString, client);
 
-		if (clientScopes.noneMatch(s -> SMART_SCOPE_LAUNCH_PATIENT.equals(s.getName()))) {
+		if (clientScopes.noneMatch(s -> SMART_SCOPE_LAUNCH_PATIENT.equals(s.getName()) || SMART_SCOPE_LAUNCH.equals(s.getName()))) {
 			// no launch/patient scope == no-op
 			context.success();
 			return;
@@ -106,7 +108,23 @@ public class PatientSelectionForm implements Authenticator {
 			fail(context, "Expected user to have one or more relatedPatients attributes, but found none");
 			return;
 		}
-		if (resourceIds.size() == 1) {
+
+        String requestedLaunch = getLaunchParam(context);
+        if (requestedLaunch != null) {
+            if (!requestedLaunch.isEmpty()) {
+                if (resourceIds.contains(requestedLaunch)) {
+                    LOG.debugf("Direct launch parameter; selecting patient '%s'", requestedLaunch);
+                    succeed(context, requestedLaunch);
+                    return;
+                } else {
+                    LOG.warnf("Provided launch parameter '%s' is not permitted for this user; falling back to normal selection.", requestedLaunch);
+					fail(context, "Given user isn't authorized for the provided launch parameter.");
+					return;
+                }
+            }
+        }
+
+        if (resourceIds.size() == 1) {
 			succeed(context, resourceIds.get(0));
 			return;
 		}
@@ -199,11 +217,19 @@ public class PatientSelectionForm implements Authenticator {
 		// Explicitly override the scope string with what we need (less brittle than depending on this to exist as a client scope)
 		accessToken.setScope(SMART_SCOPE_PATIENT_READ);
 
-		JsonWebToken jwt = accessToken.audience(requestedAudience);
-		// convert resource id array to a string where resource ids are separated by comma
-		jwt.setOtherClaims("patient", String.join(",",resourceIds));
-		return session.tokens().encode(jwt);
-	}
+        JsonWebToken jwt = accessToken.audience(requestedAudience);
+        // convert resource id array to a string where resource ids are separated by comma
+        String _launch = getLaunchParam(context);
+
+        if (_launch != null && !_launch.isBlank() && resourceIds.contains(_launch)) {
+            jwt.setOtherClaims("patient", _launch);
+            LOG.debugf("Setting token 'patient' claim to single id from launch: %s", _launch);
+        } else {
+            jwt.setOtherClaims("patient", String.join(",", resourceIds));
+            LOG.debugf("Setting token 'patient' claim to all assigned ids.");
+        }
+        return session.tokens().encode(jwt);
+    }
 
 	private Bundle buildRequestBundle(List<String> resourceIds) {
 
@@ -325,4 +351,33 @@ public class PatientSelectionForm implements Authenticator {
 	public void close() {
 		// nothing to do
 	}
+
+    /**
+     * Retrieves the 'launch' parameter value if present.
+     * then falls back to raw query parameter on the current HTTP request.
+     */
+    private String getLaunchParam(AuthenticationFlowContext context) {
+        try {
+            AuthenticationSessionModel authSession = context.getAuthenticationSession();
+
+            String fromNote = authSession.getClientNote(SMART_PARAM_LAUNCH);
+            if (fromNote != null && !fromNote.trim().isEmpty()) {
+                return fromNote;
+            }
+
+            if (context.getHttpRequest() != null && context.getHttpRequest().getUri() != null) {
+                MultivaluedMap<String, String> query = context.getHttpRequest().getUri().getQueryParameters();
+                if (query != null) {
+                    String fromQuery = query.getFirst("launch");
+                    if (fromQuery != null && !fromQuery.trim().isEmpty()) {
+                        return fromQuery;
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            LOG.debug("Failed to retrieve launch parameter (non-fatal).", t);
+        }
+        return null;
+    }
+
 }
