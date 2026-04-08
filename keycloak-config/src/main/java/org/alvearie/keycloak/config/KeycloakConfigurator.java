@@ -41,6 +41,8 @@ import org.keycloak.representations.idm.IdentityProviderRepresentation;
 import org.keycloak.representations.idm.ProtocolMapperRepresentation;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
+import org.keycloak.representations.userprofile.config.UPConfig;
+import org.keycloak.representations.userprofile.config.UPConfig.UnmanagedAttributePolicy;
 
 import jakarta.json.JsonObject;
 import jakarta.json.JsonString;
@@ -72,6 +74,15 @@ public class KeycloakConfigurator {
 			if (realm == null) {
 				throw new RuntimeException("Unable to create realm");
 			}
+		}
+
+		// Update User Profile configuration (unmanaged attribute policy)
+		String unmanagedAttributePolicy = realmPg.getStringProperty(KeycloakConfig.PROP_UNMANAGED_ATTRIBUTE_POLICY);
+		if (unmanagedAttributePolicy != null) {
+			System.out.println("setting unmanagedAttributePolicy: " + unmanagedAttributePolicy);
+			UPConfig upConfig = realms.realm(realmName).users().userProfile().getConfiguration();
+			upConfig.setUnmanagedAttributePolicy(UnmanagedAttributePolicy.valueOf(unmanagedAttributePolicy));
+			realms.realm(realmName).users().userProfile().update(upConfig);
 		}
 
 		// Initialize client scopes
@@ -1018,8 +1029,6 @@ public class KeycloakConfigurator {
 
 	/**
 	 * Gets the client by client ID.
-	 * @param adminClient the clients
-	 * @param clientName the client name
 	 * @return the client, or null if not found
 	 */
 	private ClientRepresentation getClientByClientId(ClientsResource clients, String clientId) {
@@ -1063,7 +1072,6 @@ public class KeycloakConfigurator {
 
 	/**
 	 * Gets the identity provider mapper by name.
-	 * @param identity provider the identity provider
 	 * @param mapperName the mapper name
 	 * @return the identity provider mapper, or null if not found
 	 */
