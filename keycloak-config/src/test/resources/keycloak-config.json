@@ -7,6 +7,7 @@
 		"realms": {
 			"test2": {
 				"enabled": true,
+				"unmanagedAttributePolicy": "ENABLED",
 				"clientScopes": {
 					"fhirUser": {
 						"protocol": "openid-connect",
@@ -19,7 +20,7 @@
 								"protocol": "openid-connect",
 								"protocolmapper": "oidc-patient-prefix-usermodel-attribute-mapper",
 								"config": {
-									"user.attribute": "resourceId",
+									"user.attribute": "relatedPatients",
 									"claim.name": "fhirUser",
 									"jsonType.label": "String",
 									"id.token.claim": "true",
@@ -36,16 +37,28 @@
 							"display.on.consent.screen": "false"
 						},
 						"mappers": {
-							"Patient ID Mapper": {
+							"Patient ID Claim Mapper": {
 								"protocol": "openid-connect",
 								"protocolmapper": "oidc-usermodel-attribute-mapper",
 								"config": {
-									"user.attribute": "resourceId",
+									"user.attribute": "relatedPatients",
 									"jsonType.label": "String",
-									"claim.name": "patient_id",
+									"claim.name": "patient",
 									"id.token.claim": "false",
 									"access.token.claim": "true",
 									"userinfo.token.claim": "false"
+								}
+							},
+							"Patient ID Token Mapper": {
+								"protocol": "openid-connect",
+								"protocolmapper": "oidc-usersessionmodel-note-mapper",
+								"config": {
+									"user.session.note": "patient",
+									"claim.name": "patient",
+									"jsonType.label": "String",
+									"id.token.claim": "false",
+									"access.token.claim": "false",
+									"access.tokenResponse.claim": "true"
 								}
 							},
 							"Group Membership Mapper": {
