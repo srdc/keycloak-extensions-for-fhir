@@ -41,6 +41,7 @@ import org.keycloak.representations.idm.IdentityProviderRepresentation;
 import org.keycloak.representations.idm.ProtocolMapperRepresentation;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
+import org.keycloak.representations.userprofile.config.UPAttribute;
 import org.keycloak.representations.userprofile.config.UPConfig;
 import org.keycloak.representations.userprofile.config.UPConfig.UnmanagedAttributePolicy;
 
@@ -82,6 +83,13 @@ public class KeycloakConfigurator {
 			System.out.println("setting unmanagedAttributePolicy: " + unmanagedAttributePolicy);
 			UPConfig upConfig = realms.realm(realmName).users().userProfile().getConfiguration();
 			upConfig.setUnmanagedAttributePolicy(UnmanagedAttributePolicy.valueOf(unmanagedAttributePolicy));
+			// Turn additional user profile attributes optional to remove the user profile setup page from test
+			for (String attrName : new String[]{"email", "firstName", "lastName"}) {
+				UPAttribute attr = upConfig.getAttribute(attrName);
+				if (attr != null) {
+					attr.setRequired(null);
+				}
+			}
 			realms.realm(realmName).users().userProfile().update(upConfig);
 		}
 
@@ -930,10 +938,18 @@ public class KeycloakConfigurator {
 		if (user == null) {
 			user = new UserRepresentation();
 			user.setUsername(userName);
-			users.create(user);
+			Response createResponse = users.create(user);
+			int status = createResponse.getStatus();
+			if (status < 200 || status >= 300) {
+				String errorBody = "";
+				try { errorBody = createResponse.readEntity(String.class); } catch (Exception ignored) {}
+				createResponse.close();
+				throw new RuntimeException("Unable to create user '" + userName + "': HTTP " + status + " " + errorBody);
+			}
+			createResponse.close();
 			user = getUserByName(users, userName);
 			if (user == null) {
-				throw new RuntimeException("Unable to create user");
+				throw new RuntimeException("Unable to create user '" + userName + "': user not found after creation");
 			}
 		}
 
