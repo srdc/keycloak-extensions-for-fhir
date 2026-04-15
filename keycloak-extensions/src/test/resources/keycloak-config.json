@@ -1,6 +1,7 @@
 {
 	"test": {
 		"enabled": true,
+		"unmanagedAttributePolicy": "ENABLED",
 		"clientScopes": {
 			"fhirUser": {
 				"protocol": "openid-connect",
@@ -13,7 +14,7 @@
 						"protocol": "openid-connect",
 						"protocolmapper": "oidc-patient-prefix-usermodel-attribute-mapper",
 						"config": {
-							"user.attribute": "resourceId",
+							"user.attribute": "relatedPatients",
 							"claim.name": "fhirUser",
 							"jsonType.label": "String",
 							"id.token.claim": "true",
@@ -34,8 +35,8 @@
 						"protocol": "openid-connect",
 						"protocolmapper": "oidc-usermodel-attribute-mapper",
 						"config": {
-							"user.attribute": "resourceId",
-							"claim.name": "patient_id",
+							"user.attribute": "relatedPatients",
+							"claim.name": "patient",
 							"jsonType.label": "String",
 							"id.token.claim": "false",
 							"access.token.claim": "true",
@@ -46,7 +47,7 @@
 						"protocol": "openid-connect",
 						"protocolmapper": "oidc-usersessionmodel-note-mapper",
 						"config": {
-							"user.session.note": "patient_id",
+							"user.session.note": "patient",
 							"claim.name": "patient",
 							"jsonType.label": "String",
 							"id.token.claim": "false",
@@ -112,10 +113,9 @@
 			}
 		},
 		"browserFlow": "SMART App Launch",
-		"defaultDefaultClientScopes": ["profile"],
+		"defaultDefaultClientScopes": ["profile", "launch/patient"],
 		"defaultOptionalClientScopes": [
-			"fhirUser",
-			"launch/patient"
+			"fhirUser"
 		],
 		"clients": {
 			"test": {
@@ -124,24 +124,24 @@
 				"bearerOnly": false,
 				"enableDirectAccess": true,
 				"rootURL": "http://localhost",
-				"redirectURIs": ["http://localhost/*"]
+				"redirectURIs": ["http://localhost:19876/*"]
 			}
 		},
 		"users": {
-			"a": {
+			"testa": {
 				"enabled": true,
-				"password": "a",
+				"password": "testa",
 				"passwordTemporary": false,
 				"attributes": {
-					"resourceId": ["PatientA PatientB PatientMissing"]
+					"relatedPatients": ["PatientA PatientB PatientMissing"]
 				}
 			},
-			"b": {
+			"testb": {
 				"enabled": true,
-				"password": "b",
+				"password": "testb",
 				"passwordTemporary": false,
 				"attributes": {
-					"resourceId": ["PatientB"]
+					"relatedPatients": ["PatientB"]
 				}
 			}
 		}

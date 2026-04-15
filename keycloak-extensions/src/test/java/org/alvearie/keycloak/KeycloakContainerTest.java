@@ -39,10 +39,10 @@ import okhttp3.mockwebserver.RecordedRequest;
 public class KeycloakContainerTest {
 	private static final String MASTER_REALM = "master";
 	private static final String ADMIN_CLIENT_ID = "admin-cli";
-	private static final String USERNAME = "a";
-	private static final String PASSWORD = "a";
+	private static final String USERNAME = "testa";
+	private static final String PASSWORD = "testa";
 	private static final String KC_CLIENT = "test";
-	private static final String REDIRECT_URI = "http://localhost";
+	private static final String REDIRECT_URI = "http://localhost:19876/callback";
 	private static final String AUTH_ENDPOINT = "/realms/test/protocol/openid-connect/auth";
 	private static final String TOKEN_ENDPOINT = "/realms/test/protocol/openid-connect/token";
 	private static final String AUDIENCE = "https://localhost:9443/fhir-server/api/v4";
@@ -60,7 +60,7 @@ public class KeycloakContainerTest {
 	// per the testcontainers doc, the contain should be started in a static block before JUnit starts up
 	private static KeycloakContainer keycloak;
 	static {
-		keycloak = new KeycloakContainer("quay.io/keycloak/keycloak:22.0.1").withProviderClassesFrom("target/classes")
+		keycloak = new KeycloakContainer("quay.io/keycloak/keycloak:25.0.5").withProviderClassesFrom("target/classes")
 				.withFileSystemBind("target/dependency", "/opt/keycloak/providers/");
 		keycloak.withEnv("DB_VENDOR", "H2");
 		// Uncomment this to keep the container running after the tests complete
@@ -151,7 +151,7 @@ public class KeycloakContainerTest {
 		String[] accessTokenParts = accessToken.split("\\.");
 		assertEquals(3, accessTokenParts.length);
 		Map<?,?> claims = new ObjectMapper().readValue(Base64.getDecoder().decode(accessTokenParts[1]), HashMap.class);
-		assertTrue(claims.containsKey("patient_id"));
-		System.out.println("patient_id claim: " + claims.get("patient_id"));
+		assertTrue(claims.containsKey("patient"));
+		System.out.println("patient claim: " + claims.get("patient"));
 	}
 }

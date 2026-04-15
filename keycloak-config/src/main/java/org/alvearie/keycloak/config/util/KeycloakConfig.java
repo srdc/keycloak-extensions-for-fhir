@@ -102,6 +102,7 @@ public class KeycloakConfig {
 	public static final String PROP_EVENTS_CONFIG_EXPIRATION = "expiration";
 	public static final String PROP_EVENTS_CONFIG_SAVE_TYPES = "types";
 	public static final String PROP_EVENTS_CONFIG_SAVE_ADMIN_EVENTS = "saveAdminEvents";
+	public static final String PROP_UNMANAGED_ATTRIBUTE_POLICY = "unmanagedAttributePolicy";
 
 	private static final JsonReaderFactory JSON_READER_FACTORY = Json.createReaderFactory(null);
 
@@ -204,9 +205,6 @@ public class KeycloakConfig {
 	/**
 	 * Loads the specified file as a JSON file and returns a PropertyGroup containing the contents of the JSON file as
 	 * the root property group.
-	 *
-	 * @param filename
-	 *            the name of the JSON file to be loaded
 	 */
 	private PropertyGroup loadConfiguration() {
 		if (config == null) {

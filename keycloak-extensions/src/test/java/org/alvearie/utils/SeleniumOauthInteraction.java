@@ -10,6 +10,7 @@ import static org.junit.Assert.fail;
 
 import java.net.URI;
 import java.net.URLDecoder;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
@@ -56,7 +57,9 @@ public class SeleniumOauthInteraction {
 
 		WebDriverManager.chromedriver().setup();
 		ChromeOptions options = new ChromeOptions();
-		options.setHeadless(true);
+		options.addArguments("--headless=new");
+		options.addArguments("--disable-gpu");
+		options.addArguments("--no-sandbox");
 		driver = new ChromeDriver(options);
 	}
 
@@ -89,14 +92,14 @@ public class SeleniumOauthInteraction {
 			// launch Firefox and direct it to the Base URL
 			driver.get(oauthAuthUrl + "?" + queryString);
 
-			WebElement dynamicElement = (new WebDriverWait(driver, 30))
+			WebElement dynamicElement = (new WebDriverWait(driver, Duration.ofSeconds(30)))
 					.until(ExpectedConditions.presenceOfElementLocated(By.id("username")));
 			dynamicElement.sendKeys(user);
 
 			driver.findElement(By.id("password")).sendKeys(pass);
 			driver.findElement(By.id("kc-login")).click();
 
-			Boolean loginButtonDisappeared = (new WebDriverWait(driver, 5, 200))
+			Boolean loginButtonDisappeared = (new WebDriverWait(driver, Duration.ofSeconds(5), Duration.ofMillis(200)))
 					.until(ExpectedConditions.invisibilityOfElementLocated(By.id("kc-login")));
 			LOGGER.debug("Login button is visible?? " + !loginButtonDisappeared);
 
@@ -113,11 +116,11 @@ public class SeleniumOauthInteraction {
 			//   header.div kc-username
 			//   div kc-content
 			//   form id=patient-selection
-			//   input id=<patient_id> (one per patient that the user has access to)
+			//   input id=<patient> (one per patient that the user has access to)
 			//   input id=submit
 			try {
 				// wait up to 3 seconds - poll for element every 200 ms
-				new WebDriverWait(driver, 5, 200)
+				new WebDriverWait(driver, Duration.ofSeconds(5), Duration.ofMillis(200))
 				.until(ExpectedConditions.presenceOfElementLocated(By.id("patient-selection")));
 
 				// simulate choosing the patient that has an id of "PatientA"
@@ -127,24 +130,6 @@ public class SeleniumOauthInteraction {
 			} catch ( TimeoutException e ) {
 				LOGGER.error("Expected the patient selection form but didn't find it", e);
 				fail("Expected the patient selection form but didn't find it");
-			}
-
-			// wait up to 2 seconds for screen showing YES/NO page for first-time users.
-			// Page contents:
-			//   kc-page-title=Grant Access to inferno
-			//   li - permissions granted
-			//   input id=kc-cancel NO
-			//   input kd=kc-login YES
-			try {
-				// either the button is found or a TimeoutException is generated
-				WebElement grantAccessButton = (new WebDriverWait(driver, 1,200))
-						.until(ExpectedConditions.presenceOfElementLocated(By.id("kc-login")));
-
-				grantAccessButton.click();
-			} catch ( TimeoutException e ) {
-				// Didn't find YES button with id='kc-login'.
-				// Ignore exception; probably not the first sign-on for this user.
-				LOGGER.error("Didn't find YES button with id='kc-login' - ignore exception" + e.getMessage());
 			}
 
 			// poll at 500 ms interval until 'code' is present in URL query parameter list.
@@ -251,7 +236,7 @@ public class SeleniumOauthInteraction {
 		SeleniumOauthInteraction s = new SeleniumOauthInteraction("test", "https://localhost",
 				baseUrl + "auth", baseUrl + "token");
 
-		Map<String, String> authResponse = s.fetchCode("a", "a", "https://localhost:9443/fhir-server/api/v4",
+		Map<String, String> authResponse = s.fetchCode("testa", "testa", "https://localhost:9443/fhir-server/api/v4",
 				"openid", "launch/patient");
 		Map<String, String> tokenResponse = s.fetchToken(authResponse.get("code"));
 

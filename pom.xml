@@ -11,8 +11,8 @@
 
   <properties>
     <keycloak.version>25.0.5</keycloak.version>
-    <!-- 1.10.0 = 17.0.0-legacy  2.2.2=18.0.0 -->
-    <testcontainers-keycloak.version>2.2.2</testcontainers-keycloak.version>
+    <!-- 3.4.0 supports Keycloak 22+ -->
+    <testcontainers-keycloak.version>3.4.0</testcontainers-keycloak.version>
     <hapi.fhir.version>5.7.2</hapi.fhir.version>
     <java.version>17</java.version>
     <maven.compiler.source>${java.version}</maven.compiler.source>
@@ -114,13 +114,13 @@
       <dependency>
         <groupId>org.seleniumhq.selenium</groupId>
         <artifactId>selenium-java</artifactId>
-        <version>4.1.1</version>
+        <version>4.27.0</version>
         <scope>test</scope>
       </dependency>
       <dependency>
         <groupId>io.github.bonigarcia</groupId>
         <artifactId>webdrivermanager</artifactId>
-        <version>5.3.1</version>
+        <version>5.9.2</version>
         <scope>test</scope>
       </dependency>
       <dependency>
