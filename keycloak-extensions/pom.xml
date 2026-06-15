@@ -87,6 +87,9 @@
 	      <groupId>org.apache.maven.plugins</groupId>
 	      <artifactId>maven-shade-plugin</artifactId>
 	      <version>3.3.0</version>
+          <configuration>
+            <skip>${skip.shade}</skip>
+          </configuration>
 	      <executions>
 	          <execution>
 	              <phase>package</phase>

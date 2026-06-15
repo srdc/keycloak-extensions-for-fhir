@@ -17,6 +17,7 @@
     <java.version>17</java.version>
     <maven.compiler.source>${java.version}</maven.compiler.source>
     <maven.compiler.target>${java.version}</maven.compiler.target>
+    <skip.shade>false</skip.shade>
   </properties>
 
   <modules>
