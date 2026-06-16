@@ -1,11 +1,11 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
     <groupId>org.alvearie</groupId>
     <artifactId>keycloak-extensions-parent</artifactId>
-    <version>0.5.0-SNAPSHOT</version>
+    <version>0.6.0-SNAPSHOT</version>
   </parent>
   <artifactId>keycloak-extensions</artifactId>
   <packaging>jar</packaging>
@@ -69,37 +69,37 @@
     <dependency>
       <groupId>ca.uhn.hapi.fhir</groupId>
       <artifactId>hapi-fhir-structures-r4</artifactId>
-       <version>${hapi.fhir.version}</version>
-     </dependency>
-     <dependency>
-       <groupId>ca.uhn.hapi.fhir</groupId>
-       <artifactId>hapi-fhir-client</artifactId>
-       <version>${hapi.fhir.version}</version>
-     </dependency>
-    
+      <version>${hapi.fhir.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>ca.uhn.hapi.fhir</groupId>
+      <artifactId>hapi-fhir-client</artifactId>
+      <version>${hapi.fhir.version}</version>
+    </dependency>
+
   </dependencies>
 
   <build>
-    
+
     <plugins>
       <!-- created a shaded jar w/dependencies which we'll copy into the keycloak container -->
       <plugin>
-	      <groupId>org.apache.maven.plugins</groupId>
-	      <artifactId>maven-shade-plugin</artifactId>
-	      <version>3.3.0</version>
-          <configuration>
-            <skip>${skip.shade}</skip>
-          </configuration>
-	      <executions>
-	          <execution>
-	              <phase>package</phase>
-	              <goals>
-	                  <goal>shade</goal>
-	              </goals>
-	          </execution>
-	      </executions>
-	  </plugin>
-	  <!-- We copy the dependencies only so the unit test can grab them to copy into the test keycloak container -->
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+        <version>3.3.0</version>
+        <configuration>
+          <skip>${skip.shade}</skip>
+        </configuration>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals>
+              <goal>shade</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <!-- We copy the dependencies only so the unit test can grab them to copy into the test keycloak container -->
       <plugin>
         <artifactId>maven-dependency-plugin</artifactId>
         <version>3.4.0</version>
@@ -121,7 +121,7 @@
             </configuration>
           </execution>
         </executions>
-      </plugin> 
+      </plugin>
       <!-- <plugin>
         <artifactId>maven-resources-plugin</artifactId>
         <version>3.3.0</version>

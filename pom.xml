@@ -1,18 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>org.alvearie</groupId>
   <artifactId>keycloak-extensions-parent</artifactId>
-  <version>0.5.0-SNAPSHOT</version>
+  <version>0.6.0-SNAPSHOT</version>
   <packaging>pom</packaging>
 
   <properties>
-    <keycloak.version>25.0.5</keycloak.version>
-    <!-- 3.4.0 supports Keycloak 22+ -->
-    <testcontainers-keycloak.version>3.4.0</testcontainers-keycloak.version>
+    <keycloak.version>26.5.5</keycloak.version>
+    <keycloak.admin-client.version>26.0.8</keycloak.admin-client.version>
+    <!-- 1.10.0 = 17.0.0-legacy  2.2.2=18.0.0 -->
+    <testcontainers-keycloak.version>2.2.2</testcontainers-keycloak.version>
     <hapi.fhir.version>5.7.2</hapi.fhir.version>
     <java.version>17</java.version>
     <maven.compiler.source>${java.version}</maven.compiler.source>
@@ -54,7 +55,7 @@
       <dependency>
         <groupId>org.keycloak</groupId>
         <artifactId>keycloak-admin-client</artifactId>
-        <version>${keycloak.version}</version>
+        <version>${keycloak.admin-client.version}</version>
       </dependency>
       <dependency>
         <groupId>org.eclipse.parsson</groupId>
@@ -115,13 +116,13 @@
       <dependency>
         <groupId>org.seleniumhq.selenium</groupId>
         <artifactId>selenium-java</artifactId>
-        <version>4.27.0</version>
+        <version>4.1.1</version>
         <scope>test</scope>
       </dependency>
       <dependency>
         <groupId>io.github.bonigarcia</groupId>
         <artifactId>webdrivermanager</artifactId>
-        <version>5.9.2</version>
+        <version>5.3.1</version>
         <scope>test</scope>
       </dependency>
       <dependency>

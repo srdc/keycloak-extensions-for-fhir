@@ -104,6 +104,7 @@ See https://github.com/Alvearie/keycloak-extensions-for-fhir/tree/main/keycloak-
 | keycloak-extensions/PatientSelectionForm | A Keycloak Authenticator for narrowing the scope of a given session to the context of a single patient. |
 | keycloak-extensions/PatientPrefixUserAttributeMapper | A Keycloak OIDCProtocolMapper for adding the `Patient/` prefix to a user attribute; used to map the Patient resource id attribute into a valid `fhirUser` claim on the id_token when the `fhirUser` scope is requested. |
 | keycloak-extensions/UserAttributeMapper | A forked copy of the Keycloak User Attribute mapper that has been extended to support mapping user attributes to custom fields in the token response payload (rather than claims in the issued tokens). |
+| keycloak-extensions/TenantClaimsMapper | A Keycloak OIDCProtocolMapper for adding `tenant_id` and `tenant` claims from the user's tenant group attributes to issued tokens. |
 
 ## Building the docker images
 To build the docker images:

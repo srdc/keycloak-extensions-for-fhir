@@ -1,2 +1,3 @@
 org.alvearie.keycloak.PatientPrefixUserAttributeMapper
 org.alvearie.keycloak.UserAttributeMapper
+org.alvearie.keycloak.TenantClaimsMapper

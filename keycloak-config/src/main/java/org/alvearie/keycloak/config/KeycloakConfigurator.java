@@ -5,49 +5,21 @@ SPDX-License-Identifier: Apache-2.0
  */
 package org.alvearie.keycloak.config;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Set;
-import java.util.stream.Collectors;
-
+import jakarta.json.JsonObject;
+import jakarta.json.JsonString;
+import jakarta.json.JsonValue;
 import jakarta.ws.rs.core.Response;
 import org.alvearie.keycloak.config.util.KeycloakConfig;
 import org.alvearie.keycloak.config.util.PropertyGroup;
 import org.alvearie.keycloak.config.util.PropertyGroup.PropertyEntry;
 import org.keycloak.admin.client.Keycloak;
-import org.keycloak.admin.client.resource.AuthenticationManagementResource;
-import org.keycloak.admin.client.resource.ClientResource;
-import org.keycloak.admin.client.resource.ClientScopesResource;
-import org.keycloak.admin.client.resource.ClientsResource;
-import org.keycloak.admin.client.resource.GroupsResource;
-import org.keycloak.admin.client.resource.IdentityProviderResource;
-import org.keycloak.admin.client.resource.IdentityProvidersResource;
-import org.keycloak.admin.client.resource.ProtocolMappersResource;
-import org.keycloak.admin.client.resource.RealmsResource;
-import org.keycloak.admin.client.resource.UsersResource;
-import org.keycloak.representations.idm.AuthenticationExecutionInfoRepresentation;
-import org.keycloak.representations.idm.AuthenticationFlowRepresentation;
-import org.keycloak.representations.idm.AuthenticatorConfigRepresentation;
-import org.keycloak.representations.idm.ClientRepresentation;
-import org.keycloak.representations.idm.ClientScopeRepresentation;
-import org.keycloak.representations.idm.CredentialRepresentation;
-import org.keycloak.representations.idm.GroupRepresentation;
-import org.keycloak.representations.idm.IdentityProviderMapperRepresentation;
-import org.keycloak.representations.idm.IdentityProviderRepresentation;
-import org.keycloak.representations.idm.ProtocolMapperRepresentation;
-import org.keycloak.representations.idm.RealmRepresentation;
-import org.keycloak.representations.idm.UserRepresentation;
-import org.keycloak.representations.userprofile.config.UPAttribute;
+import org.keycloak.admin.client.resource.*;
+import org.keycloak.representations.idm.*;
 import org.keycloak.representations.userprofile.config.UPConfig;
-import org.keycloak.representations.userprofile.config.UPConfig.UnmanagedAttributePolicy;
 
-import jakarta.json.JsonObject;
-import jakarta.json.JsonString;
-import jakarta.json.JsonValue;
+import java.util.*;
+import java.util.Map.Entry;
+import java.util.stream.Collectors;
 
 public class KeycloakConfigurator {
 	private final Keycloak adminClient;
@@ -75,22 +47,6 @@ public class KeycloakConfigurator {
 			if (realm == null) {
 				throw new RuntimeException("Unable to create realm");
 			}
-		}
-
-		// Update User Profile configuration (unmanaged attribute policy)
-		String unmanagedAttributePolicy = realmPg.getStringProperty(KeycloakConfig.PROP_UNMANAGED_ATTRIBUTE_POLICY);
-		if (unmanagedAttributePolicy != null) {
-			System.out.println("setting unmanagedAttributePolicy: " + unmanagedAttributePolicy);
-			UPConfig upConfig = realms.realm(realmName).users().userProfile().getConfiguration();
-			upConfig.setUnmanagedAttributePolicy(UnmanagedAttributePolicy.valueOf(unmanagedAttributePolicy));
-			// Turn additional user profile attributes optional to remove the user profile setup page from test
-			for (String attrName : new String[]{"email", "firstName", "lastName"}) {
-				UPAttribute attr = upConfig.getAttribute(attrName);
-				if (attr != null) {
-					attr.setRequired(null);
-				}
-			}
-			realms.realm(realmName).users().userProfile().update(upConfig);
 		}
 
 		// Initialize client scopes
@@ -204,14 +160,43 @@ public class KeycloakConfigurator {
 			}
 		}
 
+		// Initialize realm roles
+		PropertyGroup rolesPg = realmPg.getPropertyGroup(KeycloakConfig.PROP_ROLES);
+		if (rolesPg != null) {
+			for (PropertyEntry rolePe : rolesPg.getProperties()) {
+				String roleName = rolePe.getName();
+				PropertyGroup rolePg = rolesPg.getPropertyGroup(roleName);
+				initializeRealmRole(realms.realm(realmName).roles(), roleName, rolePg);
+			}
+		}
+
+		// Enable unmanaged attributes
+		RealmResource realmResource = adminClient.realm(realmName);
+		UserProfileResource userProfile = realmResource.users().userProfile();
+		UPConfig upConfig = userProfile.getConfiguration();
+		if (upConfig == null) {
+			upConfig = new UPConfig();
+		}
+		upConfig.setUnmanagedAttributePolicy(UPConfig.UnmanagedAttributePolicy.ENABLED);
+		userProfile.update(upConfig);
+
 		// Initialize users
 		PropertyGroup usersPg = realmPg.getPropertyGroup(KeycloakConfig.PROP_USERS);
 		if (usersPg != null) {
 			for (PropertyEntry userPe: usersPg.getProperties()) {
 				String userName = userPe.getName();
 				PropertyGroup userPg = usersPg.getPropertyGroup(userName);
-				initializeUser(realms.realm(realmName).users(), realms.realm(realmName).groups(), userName, userPg);
+				initializeUser(realms.realm(realmName).users(), realms.realm(realmName).groups(), realms.realm(realmName).roles(), userName, userPg);
 			}
+		}
+
+		// Sync client scope -> realm role mappings
+		if (clientScopesPg != null) {
+			syncClientScopeRoleMappings(
+					realms.realm(realmName).clientScopes(),
+					realms.realm(realmName).roles(),
+					clientScopesPg
+			);
 		}
 
 		// Initialize events config
@@ -220,11 +205,26 @@ public class KeycloakConfigurator {
 			initializeEventsConfig(realm, eventsPg);
 		}
 
+		// Initialize required actions
+		PropertyGroup requiredActionsPg = realmPg.getPropertyGroup(KeycloakConfig.PROP_REQUIRED_ACTIONS);
+		if (requiredActionsPg != null) {
+			initializeRequiredActions(realms.realm(realmName).flows(), requiredActionsPg);
+		}
+
 		// Update realm settings
 		String browserFlow = realmPg.getStringProperty(KeycloakConfig.PROP_BROWSER_FLOW);
 		if (browserFlow != null) {
 			realm.setBrowserFlow(browserFlow);
 		}
+		Integer accessTokenLifespan = realmPg.getIntProperty(KeycloakConfig.PROP_REALM_ACCESS_TOKEN_LIFESPAN);
+		if (accessTokenLifespan != null) {
+			realm.setAccessTokenLifespan(accessTokenLifespan);
+		}
+		Integer ssoSessionIdleTimeout = realmPg.getIntProperty(KeycloakConfig.PROP_REALM_SSO_SESSION_IDLE_TIMEOUT);
+		if (ssoSessionIdleTimeout != null) {
+			realm.setSsoSessionIdleTimeout(ssoSessionIdleTimeout);
+		}
+
 		realm.setEnabled(realmPg.getBooleanProperty(KeycloakConfig.PROP_REALM_ENABLED));
 		realms.realm(realmName).update(realm);
 	}
@@ -388,6 +388,7 @@ public class KeycloakConfigurator {
 		PropertyGroup attributePg = clientPg.getPropertyGroup(KeycloakConfig.PROP_CLIENT_ATTRIBUTES);
 		if (attributePg != null) {
 			setAttribute(attributePg, client, KeycloakConfig.PROP_CLIENT_ATTR_DEVICE_AUTH_GRANT_ENABLED);
+			setAttribute(attributePg, client, KeycloakConfig.PROP_CLIENT_ATTR_PKCE_METHOD);
 		}
 
 		Boolean publicClient = clientPg.getBooleanProperty(KeycloakConfig.PROP_CLIENT_PUBLIC_CLIENT, false);
@@ -645,7 +646,7 @@ public class KeycloakConfigurator {
 	}
 
 	private void updateFlowWithExecutions(AuthenticationManagementResource authMgmt, PropertyGroup authenticationFlowPg,
-			AuthenticationFlowRepresentation authenticationFlow) throws Exception {
+										  AuthenticationFlowRepresentation authenticationFlow) throws Exception {
 		PropertyGroup authenticationExecutionsPg = authenticationFlowPg.getPropertyGroup("authenticationExecutions");
 		JsonObject jsonObject = authenticationFlowPg.getJsonValue("authenticationExecutions").asJsonObject();
 		for (String entry : jsonObject.keySet()) {
@@ -686,8 +687,44 @@ public class KeycloakConfigurator {
 		}
 	}
 
+	void initializeRequiredActions(AuthenticationManagementResource authMgmt, PropertyGroup requiredActionsPg) throws Exception {
+		System.out.println("initializing required actions");
+
+		List<RequiredActionProviderRepresentation> existing = authMgmt.getRequiredActions();
+
+		for (PropertyEntry actionPe : requiredActionsPg.getProperties()) {
+			String alias = actionPe.getName();
+			PropertyGroup actionPg = requiredActionsPg.getPropertyGroup(alias);
+
+			RequiredActionProviderRepresentation match = null;
+			for (RequiredActionProviderRepresentation ra : existing) {
+				if (alias.equals(ra.getAlias())) {
+					match = ra;
+					break;
+				}
+			}
+
+			if (match == null) {
+				System.err.println("Required action not found: " + alias);
+				continue;
+			}
+
+			Boolean enabled = actionPg.getBooleanProperty(KeycloakConfig.PROP_REQUIRED_ACTION_ENABLED);
+			Boolean defaultAction = actionPg.getBooleanProperty(KeycloakConfig.PROP_REQUIRED_ACTION_DEFAULT);
+
+			if (enabled != null) {
+				match.setEnabled(enabled);
+			}
+			if (defaultAction != null) {
+				match.setDefaultAction(defaultAction);
+			}
+
+			authMgmt.updateRequiredAction(alias, match);
+		}
+	}
+
 	private void configExecution(PropertyGroup propGroup, AuthenticationManagementResource authMgmt, String entry,
-			String displayName, AuthenticationFlowRepresentation authenticationFlow) throws Exception {
+								 String displayName, AuthenticationFlowRepresentation authenticationFlow) throws Exception {
 		String authenticator = propGroup.getStringProperty("authenticator");
 
 		Boolean childIsFlow = propGroup.getBooleanProperty("authenticatorFlow", false);
@@ -750,7 +787,7 @@ public class KeycloakConfigurator {
 	}
 
 	private AuthenticatorConfigRepresentation getOrCreateAuthenticatorConfig(AuthenticationManagementResource authMgmt,
-			AuthenticationExecutionInfoRepresentation execution, String configAlias, Map<String, String> config) {
+																			 AuthenticationExecutionInfoRepresentation execution, String configAlias, Map<String, String> config) {
 
 		AuthenticatorConfigRepresentation authenticatorConfig = null;
 
@@ -791,7 +828,7 @@ public class KeycloakConfigurator {
 	}
 
 	private AuthenticationExecutionInfoRepresentation getOrCreateExecution(AuthenticationManagementResource authMgmt,
-			String flowAlias, String displayName, boolean isFlow, HashMap<String, Object> executionParams) {
+																		   String flowAlias, String displayName, boolean isFlow, HashMap<String, Object> executionParams) {
 		AuthenticationExecutionInfoRepresentation savedExecution = getExecutionByDisplayName(authMgmt, flowAlias, displayName);
 
 		// System.out.println("savedExecution1: " + savedExecution);
@@ -924,6 +961,49 @@ public class KeycloakConfigurator {
 	}
 
 	/**
+	 * Initializes realm role
+	 * @param roles the roles resource
+	 * @param roleName the role name
+	 * @param rolePg the role property group
+	 * @throws Exception
+	 */
+	void initializeRealmRole(RolesResource roles, String roleName, PropertyGroup rolePg) throws Exception {
+		System.out.println("initializing realm role: " + roleName);
+
+		RoleRepresentation role;
+		try {
+			role = roles.get(roleName).toRepresentation();
+		} catch (Exception e) {
+			role = null;
+		}
+
+		if (role == null) {
+			role = new RoleRepresentation();
+			role.setName(roleName);
+			role.setDescription(rolePg != null
+					? rolePg.getStringProperty(KeycloakConfig.PROP_ROLE_DESCRIPTION)
+					: null);
+			roles.create(role);
+
+			try {
+				role = roles.get(roleName).toRepresentation();
+			} catch (Exception e) {
+				role = null;
+			}
+
+			if (role == null) {
+				throw new RuntimeException("Unable to create realm role: " + roleName);
+			}
+		}
+
+		// Update role settings
+		if (rolePg != null) {
+			role.setDescription(rolePg.getStringProperty(KeycloakConfig.PROP_ROLE_DESCRIPTION));
+			roles.get(roleName).update(role);
+		}
+	}
+
+	/**
 	 * Initializes the user.
 	 * @param users the users resource
 	 * @param groups the groups resource
@@ -931,26 +1011,36 @@ public class KeycloakConfigurator {
 	 * @param userPg the user property group
 	 * @throws Exception an Exception
 	 */
-	void initializeUser(UsersResource users, GroupsResource groups, String userName, PropertyGroup userPg) throws Exception {
+	void initializeUser(UsersResource users, GroupsResource groups, RolesResource roles, String userName, PropertyGroup userPg) throws Exception {
 		System.out.println("initializing user: " + userName);
 		// Create user if it does not exist
 		UserRepresentation user = getUserByName(users, userName);
 		if (user == null) {
 			user = new UserRepresentation();
 			user.setUsername(userName);
-			Response createResponse = users.create(user);
-			int status = createResponse.getStatus();
-			if (status < 200 || status >= 300) {
-				String errorBody = "";
-				try { errorBody = createResponse.readEntity(String.class); } catch (Exception ignored) {}
-				createResponse.close();
-				throw new RuntimeException("Unable to create user '" + userName + "': HTTP " + status + " " + errorBody);
-			}
-			createResponse.close();
+			users.create(user);
 			user = getUserByName(users, userName);
 			if (user == null) {
-				throw new RuntimeException("Unable to create user '" + userName + "': user not found after creation");
+				throw new RuntimeException("Unable to create user");
 			}
+		}
+
+		// Update user data
+		String email = userPg.getStringProperty(KeycloakConfig.PROP_USER_EMAIL);
+		if (email != null) {
+			user.setEmail(email);
+		}
+		Boolean emailVerified = userPg.getBooleanProperty(KeycloakConfig.PROP_USER_EMAIL_VERIFIED);
+		if (emailVerified != null) {
+			user.setEmailVerified(emailVerified.booleanValue());
+		}
+		String firstName = userPg.getStringProperty(KeycloakConfig.PROP_USER_FIRST_NAME);
+		if (firstName != null) {
+			user.setFirstName(firstName);
+		}
+		String lastName = userPg.getStringProperty(KeycloakConfig.PROP_USER_LAST_NAME);
+		if (lastName != null) {
+			user.setLastName(lastName);
 		}
 
 		// Update user settings
@@ -991,6 +1081,42 @@ public class KeycloakConfigurator {
 				users.get(user.getId()).joinGroup(groupId);
 			}
 		}
+
+		// Update user realm role mappings
+		List<RoleRepresentation> desiredRealmRoles =
+				getRealmRolesByName(roles, userPg.getStringListProperty(KeycloakConfig.PROP_USER_REALM_ROLES));
+
+		if (desiredRealmRoles != null) {
+			RoleScopeResource userRealmRoleScope = users.get(user.getId()).roles().realmLevel();
+			List<RoleRepresentation> existingRealmRoles = userRealmRoleScope.listAll();
+
+			Map<String, RoleRepresentation> desiredByName = desiredRealmRoles.stream()
+					.collect(Collectors.toMap(RoleRepresentation::getName, r -> r, (a, b) -> a));
+			Map<String, RoleRepresentation> existingByName = existingRealmRoles.stream()
+					.collect(Collectors.toMap(RoleRepresentation::getName, r -> r, (a, b) -> a));
+
+			List<RoleRepresentation> toRemove = new ArrayList<>();
+			for (RoleRepresentation existing : existingRealmRoles) {
+				if (!desiredByName.containsKey(existing.getName())) {
+					toRemove.add(existing);
+				}
+			}
+
+			List<RoleRepresentation> toAdd = new ArrayList<>();
+			for (RoleRepresentation desired : desiredRealmRoles) {
+				if (!existingByName.containsKey(desired.getName())) {
+					toAdd.add(desired);
+				}
+			}
+
+			if (!toRemove.isEmpty()) {
+				userRealmRoleScope.remove(toRemove);
+			}
+			if (!toAdd.isEmpty()) {
+				userRealmRoleScope.add(toAdd);
+			}
+		}
+
 	}
 
 	/**
@@ -1045,6 +1171,8 @@ public class KeycloakConfigurator {
 
 	/**
 	 * Gets the client by client ID.
+	 * @param adminClient the clients
+	 * @param clientName the client name
 	 * @return the client, or null if not found
 	 */
 	private ClientRepresentation getClientByClientId(ClientsResource clients, String clientId) {
@@ -1054,6 +1182,65 @@ public class KeycloakConfigurator {
 			}
 		}
 		return null;
+	}
+
+	/**
+	 *
+	 * @param clientScopes
+	 * @param roles
+	 * @param clientScopesPg
+	 * @throws Exception
+	 */
+	void syncClientScopeRoleMappings(ClientScopesResource clientScopes,
+									 RolesResource roles,
+									 PropertyGroup clientScopesPg) throws Exception {
+		for (PropertyEntry clientScopePe : clientScopesPg.getProperties()) {
+			String clientScopeName = clientScopePe.getName();
+			PropertyGroup clientScopePg = clientScopesPg.getPropertyGroup(clientScopeName);
+
+			List<String> desiredRoleNames = clientScopePg.getStringListProperty(KeycloakConfig.PROP_ROLES);
+			if (desiredRoleNames == null) {
+				continue;
+			}
+
+			ClientScopeRepresentation clientScope = getClientScopeByName(clientScopes, clientScopeName);
+			if (clientScope == null) {
+				throw new RuntimeException("Client scope not found: " + clientScopeName);
+			}
+
+			RoleScopeResource realmLevelScope =
+					clientScopes.get(clientScope.getId()).getScopeMappings().realmLevel();
+
+			List<RoleRepresentation> existingRoles = realmLevelScope.listAll();
+			List<RoleRepresentation> desiredRoles = getRealmRolesByName(roles, desiredRoleNames);
+
+			Map<String, RoleRepresentation> existingByName = existingRoles.stream()
+					.collect(Collectors.toMap(RoleRepresentation::getName, r -> r, (a, b) -> a));
+
+			Map<String, RoleRepresentation> desiredByName = desiredRoles.stream()
+					.collect(Collectors.toMap(RoleRepresentation::getName, r -> r, (a, b) -> a));
+
+			List<RoleRepresentation> toRemove = new ArrayList<>();
+			for (RoleRepresentation existing : existingRoles) {
+				if (!desiredByName.containsKey(existing.getName())) {
+					toRemove.add(existing);
+				}
+			}
+
+			List<RoleRepresentation> toAdd = new ArrayList<>();
+			for (RoleRepresentation desired : desiredRoles) {
+				if (!existingByName.containsKey(desired.getName())) {
+					toAdd.add(desired);
+				}
+			}
+
+			if (!toRemove.isEmpty()) {
+				realmLevelScope.remove(toRemove);
+			}
+			if (!toAdd.isEmpty()) {
+				realmLevelScope.add(toAdd);
+			}
+		}
 	}
 
 	/**
@@ -1088,6 +1275,7 @@ public class KeycloakConfigurator {
 
 	/**
 	 * Gets the identity provider mapper by name.
+	 * @param identity provider the identity provider
 	 * @param mapperName the mapper name
 	 * @return the identity provider mapper, or null if not found
 	 */
@@ -1123,7 +1311,7 @@ public class KeycloakConfigurator {
 	 * @return the execution info, or null if not found
 	 */
 	private AuthenticationExecutionInfoRepresentation getExecutionByDisplayName(AuthenticationManagementResource authMgmt, String authenticationFlowAlias,
-			String executionDisplayName) {
+																				String executionDisplayName) {
 		for (AuthenticationExecutionInfoRepresentation execution : authMgmt.getExecutions(authenticationFlowAlias)) {
 			if (executionDisplayName.equals(execution.getDisplayName())) {
 				return execution;
@@ -1177,6 +1365,30 @@ public class KeycloakConfigurator {
 			}
 		}
 		return groupIds;
+	}
+
+	/**
+	 * Gets the realm role by name.
+	 * @param roles the roles
+	 * @param roleNames the role names
+	 * @return the roles
+	 */
+	private List<RoleRepresentation> getRealmRolesByName(RolesResource roles, List<String> roleNames) {
+		List<RoleRepresentation> result = new ArrayList<>();
+		if (roleNames == null) {
+			return result;
+		}
+		for (String roleName : roleNames) {
+			try {
+				RoleRepresentation role = roles.get(roleName).toRepresentation();
+				if (role != null) {
+					result.add(role);
+				}
+			} catch (Exception e) {
+				System.err.println("Skipping realm role '" + roleName + "'; role not found");
+			}
+		}
+		return result;
 	}
 
 	/**
