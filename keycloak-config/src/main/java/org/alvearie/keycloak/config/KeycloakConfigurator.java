@@ -196,7 +196,8 @@ public class KeycloakConfigurator {
 			for (PropertyEntry userPe: usersPg.getProperties()) {
 				String userName = userPe.getName();
 				PropertyGroup userPg = usersPg.getPropertyGroup(userName);
-				initializeUser(realms.realm(realmName).users(), realms.realm(realmName).groups(), realms.realm(realmName).roles(), userName, userPg);
+				initializeUser(realms.realm(realmName).clients(), realms.realm(realmName).users(),
+						realms.realm(realmName).groups(), realms.realm(realmName).roles(), userName, userPg);
 			}
 		}
 
@@ -1149,23 +1150,49 @@ public class KeycloakConfigurator {
 
 	/**
 	 * Initializes the user.
+	 * @param clients the clients resource
 	 * @param users the users resource
 	 * @param groups the groups resource
-	 * @param userName the user name
+	 * @param roles the roles resource
+	 * @param userName the configured user name
 	 * @param userPg the user property group
 	 * @throws Exception an Exception
 	 */
-	void initializeUser(UsersResource users, GroupsResource groups, RolesResource roles, String userName, PropertyGroup userPg) throws Exception {
+	void initializeUser(ClientsResource clients, UsersResource users, GroupsResource groups, RolesResource roles,
+			String userName, PropertyGroup userPg) throws Exception {
 		System.out.println("initializing user: " + userName);
-		// Create user if it does not exist
-		UserRepresentation user = getUserByName(users, userName);
-		if (user == null) {
-			user = new UserRepresentation();
-			user.setUsername(userName);
-			users.create(user);
+		String serviceAccountClientId = userPg.getStringProperty(KeycloakConfig.PROP_USER_SERVICE_ACCOUNT_CLIENT_ID);
+		boolean serviceAccount = serviceAccountClientId != null && !serviceAccountClientId.trim().isEmpty();
+
+		UserRepresentation user;
+		if (serviceAccount) {
+			ClientRepresentation client = getClientByClientId(clients, serviceAccountClientId);
+			if (client == null) {
+				throw new IllegalArgumentException("Unable to initialize service account user '" + userName
+						+ "': client '" + serviceAccountClientId + "' does not exist");
+			}
+			if (!Boolean.TRUE.equals(client.isServiceAccountsEnabled())) {
+				throw new IllegalArgumentException("Unable to initialize service account user '" + userName
+						+ "': service accounts are not enabled for client '" + serviceAccountClientId + "'");
+			}
+
+			user = clients.get(client.getId()).getServiceAccountUser();
+			if (user == null || user.getId() == null) {
+				throw new RuntimeException("Unable to resolve service account user for client '"
+						+ serviceAccountClientId + "'");
+			}
+		}
+		else {
+			// Create user if it does not exist
 			user = getUserByName(users, userName);
 			if (user == null) {
-				throw new RuntimeException("Unable to create user");
+				user = new UserRepresentation();
+				user.setUsername(userName);
+				users.create(user);
+				user = getUserByName(users, userName);
+				if (user == null) {
+					throw new RuntimeException("Unable to create user");
+				}
 			}
 		}
 
@@ -1202,11 +1229,15 @@ public class KeycloakConfigurator {
 			}
 			user.setAttributes(attributes);
 		}
-		CredentialRepresentation credential = new CredentialRepresentation();
-		credential.setType(KeycloakConfig.KEYCLOAK_USER_PASSWORD_TYPE);
-		credential.setTemporary(userPg.getBooleanProperty(KeycloakConfig.PROP_USER_PASSWORD_TEMPORARY));
-		credential.setValue(userPg.getStringProperty(KeycloakConfig.PROP_USER_PASSWORD));
-		user.setCredentials(Arrays.asList(credential));
+		// Service-account users are managed by Keycloak and authenticate through their client,
+		// so they must not be assigned a user password from this configuration.
+		if (!serviceAccount) {
+			CredentialRepresentation credential = new CredentialRepresentation();
+			credential.setType(KeycloakConfig.KEYCLOAK_USER_PASSWORD_TYPE);
+			credential.setTemporary(userPg.getBooleanProperty(KeycloakConfig.PROP_USER_PASSWORD_TEMPORARY));
+			credential.setValue(userPg.getStringProperty(KeycloakConfig.PROP_USER_PASSWORD));
+			user.setCredentials(Arrays.asList(credential));
+		}
 		users.get(user.getId()).update(user);
 
 		// Update user group memberships

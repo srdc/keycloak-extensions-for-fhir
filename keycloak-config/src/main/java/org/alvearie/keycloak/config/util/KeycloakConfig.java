@@ -105,6 +105,7 @@ public class KeycloakConfig {
     public static final String PROP_USER_PASSWORD_TEMPORARY = "passwordTemporary";
     public static final String PROP_USER_ATTRIBUTES = "attributes";
     public static final String PROP_USER_GROUPS = "groups";
+    public static final String PROP_USER_SERVICE_ACCOUNT_CLIENT_ID = "serviceAccountClientId";
     public static final String KEYCLOAK_USER_PASSWORD_TYPE = "password";
     public static final String KEYCLOAK_FIRST_BROKER_LOGIN = "first broker login";
     public static final String KEYCLOAK_IDENTITY_PROVIDER_CLIENT_SECRET = "clientSecret";
