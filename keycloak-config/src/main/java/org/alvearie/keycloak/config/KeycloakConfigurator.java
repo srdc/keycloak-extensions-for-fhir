@@ -17,11 +17,21 @@ import org.keycloak.admin.client.resource.*;
 import org.keycloak.representations.idm.*;
 import org.keycloak.representations.userprofile.config.UPConfig;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.stream.Collectors;
 
 public class KeycloakConfigurator {
+	static final String CDS_ENDPOINT_AUDIENCE_MAPPER_PREFIX = "CDS Endpoint Audience Mapper - ";
+	static final String OIDC_PROTOCOL = "openid-connect";
+	static final String OIDC_AUDIENCE_MAPPER = "oidc-audience-mapper";
+	static final String OIDC_MULTIPLE_AUDIENCE_MAPPER = "oidc-multiple-audience-mapper";
+	static final String INCLUDED_CUSTOM_AUDIENCE = "included.custom.audience";
+	static final String INCLUDED_CUSTOM_AUDIENCES = "included.custom.audiences";
+	static final String ACCESS_TOKEN_CLAIM = "access.token.claim";
+
 	private final Keycloak adminClient;
 
 	public KeycloakConfigurator(Keycloak client) {
@@ -306,12 +316,23 @@ public class KeycloakConfigurator {
 
 		// Initialize protocol mappers
 		PropertyGroup mappersPg = clientScopePg.getPropertyGroup(KeycloakConfig.PROP_CLIENT_SCOPE_MAPPERS);
+		ProtocolMappersResource protocolMappers = clientScopes.get(clientScope.getId()).getProtocolMappers();
+		boolean foundCdsEndpointAudienceMapper = false;
 		if (mappersPg != null) {
 			for (PropertyEntry mapperPe: mappersPg.getProperties()) {
 				String mapperName = mapperPe.getName();
 				PropertyGroup mapperPg = mappersPg.getPropertyGroup(mapperName);
-				initializeProtocolMapper(clientScopes.get(clientScope.getId()).getProtocolMappers(), mapperName, mapperPg);
+				if (isCdsEndpointAudienceMapper(mapperPg)) {
+					foundCdsEndpointAudienceMapper = true;
+					syncCdsEndpointAudienceMappers(protocolMappers, mapperName, mapperPg);
+				} else {
+					initializeProtocolMapper(protocolMappers, mapperName, mapperPg);
+				}
 			}
+		}
+
+		if (!foundCdsEndpointAudienceMapper) {
+			removeCdsEndpointAudienceMappers(protocolMappers);
 		}
 	}
 
@@ -357,6 +378,126 @@ public class KeycloakConfigurator {
 	}
 
 	/**
+	 * Adds one audience mapper per CDS endpoint to the configured client scope.
+	 * Keycloak's built-in audience mapper accepts a single custom audience, so
+	 * included.custom.audiences is expanded into several ordinary mapper instances.
+	 */
+	void syncCdsEndpointAudienceMappers(ProtocolMappersResource protocolMappers, String mapperName, PropertyGroup mapperPg) throws Exception {
+		PropertyGroup configPg = mapperPg.getPropertyGroup(KeycloakConfig.PROP_CLIENT_SCOPE_MAPPER_PROTOCOL_MAPPER_CONFIG);
+		String cdsEndpointsConfig = configPg != null ? configPg.getStringProperty(INCLUDED_CUSTOM_AUDIENCES) : null;
+		List<String> cdsEndpoints = parseCdsEndpoints(cdsEndpointsConfig);
+		Map<String, String> desiredMapperNames = new LinkedHashMap<>();
+		Map<String, Integer> mapperNameCounts = new HashMap<>();
+		for (String cdsEndpoint : cdsEndpoints) {
+			desiredMapperNames.put(getUniqueCdsEndpointAudienceMapperName(cdsEndpoint, mapperNameCounts), cdsEndpoint);
+		}
+
+		for (ProtocolMapperRepresentation protocolMapper : protocolMappers.getMappers()) {
+			String existingMapperName = protocolMapper.getName();
+			if (existingMapperName != null
+					&& existingMapperName.startsWith(CDS_ENDPOINT_AUDIENCE_MAPPER_PREFIX)
+					&& !desiredMapperNames.containsKey(existingMapperName)) {
+				protocolMappers.delete(protocolMapper.getId());
+			}
+		}
+
+		for (Entry<String, String> desiredMapper : desiredMapperNames.entrySet()) {
+			upsertCdsEndpointAudienceMapper(protocolMappers, desiredMapper.getKey(), desiredMapper.getValue());
+		}
+	}
+
+	private boolean isCdsEndpointAudienceMapper(PropertyGroup mapperPg) throws Exception {
+		return OIDC_MULTIPLE_AUDIENCE_MAPPER.equals(
+				mapperPg.getStringProperty(KeycloakConfig.PROP_CLIENT_SCOPE_MAPPER_PROTOCOL_MAPPER));
+	}
+
+	private void removeCdsEndpointAudienceMappers(ProtocolMappersResource protocolMappers) {
+		for (ProtocolMapperRepresentation protocolMapper : protocolMappers.getMappers()) {
+			String mapperName = protocolMapper.getName();
+			if (mapperName != null && mapperName.startsWith(CDS_ENDPOINT_AUDIENCE_MAPPER_PREFIX)) {
+				protocolMappers.delete(protocolMapper.getId());
+			}
+		}
+	}
+
+	private void upsertCdsEndpointAudienceMapper(ProtocolMappersResource protocolMappers, String mapperName, String cdsEndpoint) {
+		System.out.println("initializing CDS endpoint audience mapper: " + mapperName);
+		ProtocolMapperRepresentation protocolMapper = getProtocolMapperByName(protocolMappers, mapperName);
+		if (protocolMapper == null) {
+			protocolMapper = new ProtocolMapperRepresentation();
+			protocolMapper.setName(mapperName);
+			protocolMapper.setProtocol(OIDC_PROTOCOL);
+			protocolMapper.setProtocolMapper(OIDC_AUDIENCE_MAPPER);
+			Response response = protocolMappers.createMapper(protocolMapper);
+			protocolMapper = getProtocolMapperByName(protocolMappers, mapperName);
+			if (protocolMapper == null) {
+				throw new RuntimeException("Unable to create CDS endpoint audience mapper: " + response.readEntity(String.class));
+			}
+		}
+
+		protocolMapper.setProtocol(OIDC_PROTOCOL);
+		protocolMapper.setProtocolMapper(OIDC_AUDIENCE_MAPPER);
+		Map<String, String> config = protocolMapper.getConfig();
+		if (config == null) {
+			config = new HashMap<>();
+		}
+		config.put(INCLUDED_CUSTOM_AUDIENCE, cdsEndpoint);
+		config.put(ACCESS_TOKEN_CLAIM, "true");
+		protocolMapper.setConfig(config);
+		protocolMappers.update(protocolMapper.getId(), protocolMapper);
+	}
+
+	static List<String> parseCdsEndpoints(String cdsEndpoints) {
+		if (cdsEndpoints == null || cdsEndpoints.trim().isEmpty()) {
+			return Collections.emptyList();
+		}
+
+		Set<String> endpoints = new LinkedHashSet<>();
+		for (String endpoint : cdsEndpoints.split(",")) {
+			String trimmedEndpoint = endpoint.trim();
+			if (!trimmedEndpoint.isEmpty() && !isUnresolvedPlaceholder(trimmedEndpoint)) {
+				endpoints.add(trimmedEndpoint);
+			}
+		}
+		return new ArrayList<>(endpoints);
+	}
+
+	private static boolean isUnresolvedPlaceholder(String value) {
+		return value.startsWith("${") && value.endsWith("}");
+	}
+
+	static String getCdsEndpointAudienceMapperName(String cdsEndpoint) {
+		return CDS_ENDPOINT_AUDIENCE_MAPPER_PREFIX + getCdsEndpointMapperSuffix(cdsEndpoint);
+	}
+
+	private static String getUniqueCdsEndpointAudienceMapperName(String cdsEndpoint, Map<String, Integer> mapperNameCounts) {
+		String mapperName = getCdsEndpointAudienceMapperName(cdsEndpoint);
+		int mapperNameCount = mapperNameCounts.merge(mapperName, 1, Integer::sum);
+		if (mapperNameCount > 1) {
+			return mapperName + " - " + mapperNameCount;
+		}
+		return mapperName;
+	}
+
+	static String getCdsEndpointMapperSuffix(String cdsEndpoint) {
+		try {
+			String path = new URI(cdsEndpoint).getPath();
+			if (path != null) {
+				String[] pathSegments = path.split("/");
+				for (int i = pathSegments.length - 1; i >= 0; i--) {
+					if (!pathSegments[i].isEmpty()) {
+						return "/" + pathSegments[i];
+					}
+				}
+			}
+		} catch (URISyntaxException e) {
+			// Fall through to a simple text fallback for non-URI values.
+		}
+
+		return cdsEndpoint;
+	}
+
+	/**
 	 * Initializes the client.
 	 * @param clients the clients resource
 	 * @param clientScopes the client scopes resource
@@ -365,12 +506,15 @@ public class KeycloakConfigurator {
 	 * @throws Exception an Exception
 	 */
 	void initializeClient(ClientsResource clients, ClientScopesResource clientScopes, String clientId, PropertyGroup clientPg) throws Exception {
-		System.out.println("initializing client: " + clientId);
 		// Create client if it does not exist
 		ClientRepresentation client = getClientByClientId(clients, clientId);
 		if (client == null) {
 			client = new ClientRepresentation();
 			client.setClientId(clientId);
+			String clientSecret = clientPg.getStringProperty(KeycloakConfig.PROP_CLIENT_SECRET);
+			if (clientSecret != null) {
+				client.setSecret(clientSecret);
+			}
 			clients.create(client);
 			client = getClientByClientId(clients, clientId);
 			if (client == null) {

@@ -62,6 +62,7 @@ public class KeycloakConfig {
     public static final String PROP_IDENTITY_PROVIDER_MAPPER_CONFIG = "config";
     public static final String PROP_CLIENTS = "clients";
     public static final String PROP_CLIENT_NAME = "name";
+    public static final String PROP_CLIENT_SECRET = "secret";
     public static final String PROP_CLIENT_DESCRIPTION = "description";
     public static final String PROP_CLIENT_CONSENT_REQUIRED = "consentRequired";
     public static final String PROP_CLIENT_PUBLIC_CLIENT = "publicClient";
