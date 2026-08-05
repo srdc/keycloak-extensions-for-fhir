@@ -94,6 +94,39 @@ docker run -v /local/config/dir:/config -e KEYCLOAK_BASE_URL=http://host.docker.
 
 See https://github.com/Alvearie/keycloak-extensions-for-fhir/tree/main/keycloak-config/src/main/resources/config for the example configurations that are shipped with this image.
 
+### Configuring realm and client roles
+
+The `keycloak-config` JSON supports realm roles and client roles. Realm roles are declared under `realmRoles`; client roles are declared under `clientRoles` inside the corresponding client. Users can optionally be assigned both kinds of roles:
+
+```json
+{
+  "realmRoles": {
+    "fhir-reader": {
+      "description": "Read FHIR resources"
+    }
+  },
+  "clients": {
+    "my-app": {
+      "clientRoles": {
+        "administrator": {
+          "description": "Application administrator"
+        }
+      }
+    }
+  },
+  "users": {
+    "alice": {
+      "realmRoles": ["fhir-reader"],
+      "clientRoles": {
+        "my-app": ["administrator"]
+      }
+    }
+  }
+}
+```
+
+Client scopes can also map realm roles by listing them under `realmRoles`. Role entries are synchronized by name and description; user role mappings are synchronized by adding configured roles and removing roles no longer listed.
+
 
 ## Component reference
 | Component | Description |

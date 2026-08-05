@@ -171,7 +171,7 @@ public class KeycloakConfigurator {
 		}
 
 		// Initialize realm roles
-		PropertyGroup rolesPg = realmPg.getPropertyGroup(KeycloakConfig.PROP_ROLES);
+		PropertyGroup rolesPg = realmPg.getPropertyGroup(KeycloakConfig.PROP_REALM_ROLES);
 		if (rolesPg != null) {
 			for (PropertyEntry rolePe : rolesPg.getProperties()) {
 				String roleName = rolePe.getName();
@@ -561,6 +561,16 @@ public class KeycloakConfigurator {
 		clients.get(client.getId()).update(client);
 
 		ClientResource cr = clients.get(client.getId());
+
+		// Initialize client roles
+		PropertyGroup clientRolesPg = clientPg.getPropertyGroup(KeycloakConfig.PROP_CLIENT_ROLES);
+		if (clientRolesPg != null) {
+			for (PropertyEntry rolePe : clientRolesPg.getProperties()) {
+				String roleName = rolePe.getName();
+				PropertyGroup rolePg = clientRolesPg.getPropertyGroup(roleName);
+				initializeClientRole(cr.roles(), roleName, rolePg);
+			}
+		}
 
 		// Remove default client scopes that no longer apply and collect the ones to add
 		List<String> defaultClientScopeIdsToAdd = new ArrayList<>();
@@ -1149,6 +1159,49 @@ public class KeycloakConfigurator {
 	}
 
 	/**
+	 * Initializes a client role.
+	 * @param roles the client roles resource
+	 * @param roleName the role name
+	 * @param rolePg the role property group
+	 * @throws Exception
+	 */
+	void initializeClientRole(RolesResource roles, String roleName, PropertyGroup rolePg) throws Exception {
+		System.out.println("initializing client role: " + roleName);
+
+		RoleRepresentation role;
+		try {
+			role = roles.get(roleName).toRepresentation();
+		} catch (Exception e) {
+			role = null;
+		}
+
+		if (role == null) {
+			role = new RoleRepresentation();
+			role.setName(roleName);
+			role.setDescription(rolePg != null
+					? rolePg.getStringProperty(KeycloakConfig.PROP_ROLE_DESCRIPTION)
+					: null);
+			roles.create(role);
+
+			try {
+				role = roles.get(roleName).toRepresentation();
+			} catch (Exception e) {
+				role = null;
+			}
+
+			if (role == null) {
+				throw new RuntimeException("Unable to create client role: " + roleName);
+			}
+		}
+
+		// Update role settings
+		if (rolePg != null) {
+			role.setDescription(rolePg.getStringProperty(KeycloakConfig.PROP_ROLE_DESCRIPTION));
+			roles.get(roleName).update(role);
+		}
+	}
+
+	/**
 	 * Initializes the user.
 	 * @param clients the clients resource
 	 * @param users the users resource
@@ -1258,40 +1311,62 @@ public class KeycloakConfigurator {
 		}
 
 		// Update user realm role mappings
-		List<RoleRepresentation> desiredRealmRoles =
-				getRealmRolesByName(roles, userPg.getStringListProperty(KeycloakConfig.PROP_USER_REALM_ROLES));
-
-		if (desiredRealmRoles != null) {
+		List<String> desiredRealmRoleNames = userPg.getStringListProperty(KeycloakConfig.PROP_USER_REALM_ROLES);
+		if (desiredRealmRoleNames != null) {
+			List<RoleRepresentation> desiredRealmRoles = getRealmRolesByName(roles, desiredRealmRoleNames);
 			RoleScopeResource userRealmRoleScope = users.get(user.getId()).roles().realmLevel();
-			List<RoleRepresentation> existingRealmRoles = userRealmRoleScope.listAll();
+			syncRoleMappings(userRealmRoleScope, desiredRealmRoles);
+		}
 
-			Map<String, RoleRepresentation> desiredByName = desiredRealmRoles.stream()
-					.collect(Collectors.toMap(RoleRepresentation::getName, r -> r, (a, b) -> a));
-			Map<String, RoleRepresentation> existingByName = existingRealmRoles.stream()
-					.collect(Collectors.toMap(RoleRepresentation::getName, r -> r, (a, b) -> a));
-
-			List<RoleRepresentation> toRemove = new ArrayList<>();
-			for (RoleRepresentation existing : existingRealmRoles) {
-				if (!desiredByName.containsKey(existing.getName())) {
-					toRemove.add(existing);
+		// Update user client role mappings. The property is a map from client ID to role names.
+		PropertyGroup userClientRolesPg = userPg.getPropertyGroup(KeycloakConfig.PROP_USER_CLIENT_ROLES);
+		if (userClientRolesPg != null) {
+			for (PropertyEntry clientRolePe : userClientRolesPg.getProperties()) {
+				String clientId = clientRolePe.getName();
+				List<String> desiredRoleNames = PropertyGroup.convertToStringList(clientRolePe.getValue());
+				ClientRepresentation client = getClientByClientId(clients, clientId);
+				if (client == null) {
+					throw new IllegalArgumentException("Unable to assign client roles for user '" + userName
+							+ "': client '" + clientId + "' does not exist");
 				}
-			}
 
-			List<RoleRepresentation> toAdd = new ArrayList<>();
-			for (RoleRepresentation desired : desiredRealmRoles) {
-				if (!existingByName.containsKey(desired.getName())) {
-					toAdd.add(desired);
-				}
-			}
-
-			if (!toRemove.isEmpty()) {
-				userRealmRoleScope.remove(toRemove);
-			}
-			if (!toAdd.isEmpty()) {
-				userRealmRoleScope.add(toAdd);
+				List<RoleRepresentation> desiredClientRoles =
+						getClientRolesByName(clients.get(client.getId()).roles(), desiredRoleNames);
+				RoleScopeResource userClientRoleScope = users.get(user.getId()).roles().clientLevel(client.getId());
+				syncRoleMappings(userClientRoleScope, desiredClientRoles);
 			}
 		}
 
+	}
+
+	private void syncRoleMappings(RoleScopeResource roleScope, List<RoleRepresentation> desiredRoles) {
+		List<RoleRepresentation> existingRoles = roleScope.listAll();
+
+		Map<String, RoleRepresentation> desiredByName = desiredRoles.stream()
+				.collect(Collectors.toMap(RoleRepresentation::getName, r -> r, (a, b) -> a));
+		Map<String, RoleRepresentation> existingByName = existingRoles.stream()
+				.collect(Collectors.toMap(RoleRepresentation::getName, r -> r, (a, b) -> a));
+
+		List<RoleRepresentation> toRemove = new ArrayList<>();
+		for (RoleRepresentation existing : existingRoles) {
+			if (!desiredByName.containsKey(existing.getName())) {
+				toRemove.add(existing);
+			}
+		}
+
+		List<RoleRepresentation> toAdd = new ArrayList<>();
+		for (RoleRepresentation desired : desiredRoles) {
+			if (!existingByName.containsKey(desired.getName())) {
+				toAdd.add(desired);
+			}
+		}
+
+		if (!toRemove.isEmpty()) {
+			roleScope.remove(toRemove);
+		}
+		if (!toAdd.isEmpty()) {
+			roleScope.add(toAdd);
+		}
 	}
 
 	/**
@@ -1373,7 +1448,7 @@ public class KeycloakConfigurator {
 			String clientScopeName = clientScopePe.getName();
 			PropertyGroup clientScopePg = clientScopesPg.getPropertyGroup(clientScopeName);
 
-			List<String> desiredRoleNames = clientScopePg.getStringListProperty(KeycloakConfig.PROP_ROLES);
+			List<String> desiredRoleNames = clientScopePg.getStringListProperty(KeycloakConfig.PROP_REALM_ROLES);
 			if (desiredRoleNames == null) {
 				continue;
 			}
@@ -1386,35 +1461,9 @@ public class KeycloakConfigurator {
 			RoleScopeResource realmLevelScope =
 					clientScopes.get(clientScope.getId()).getScopeMappings().realmLevel();
 
-			List<RoleRepresentation> existingRoles = realmLevelScope.listAll();
 			List<RoleRepresentation> desiredRoles = getRealmRolesByName(roles, desiredRoleNames);
 
-			Map<String, RoleRepresentation> existingByName = existingRoles.stream()
-					.collect(Collectors.toMap(RoleRepresentation::getName, r -> r, (a, b) -> a));
-
-			Map<String, RoleRepresentation> desiredByName = desiredRoles.stream()
-					.collect(Collectors.toMap(RoleRepresentation::getName, r -> r, (a, b) -> a));
-
-			List<RoleRepresentation> toRemove = new ArrayList<>();
-			for (RoleRepresentation existing : existingRoles) {
-				if (!desiredByName.containsKey(existing.getName())) {
-					toRemove.add(existing);
-				}
-			}
-
-			List<RoleRepresentation> toAdd = new ArrayList<>();
-			for (RoleRepresentation desired : desiredRoles) {
-				if (!existingByName.containsKey(desired.getName())) {
-					toAdd.add(desired);
-				}
-			}
-
-			if (!toRemove.isEmpty()) {
-				realmLevelScope.remove(toRemove);
-			}
-			if (!toAdd.isEmpty()) {
-				realmLevelScope.add(toAdd);
-			}
+			syncRoleMappings(realmLevelScope, desiredRoles);
 		}
 	}
 
@@ -1561,6 +1610,31 @@ public class KeycloakConfigurator {
 				}
 			} catch (Exception e) {
 				System.err.println("Skipping realm role '" + roleName + "'; role not found");
+			}
+		}
+		return result;
+	}
+
+	/**
+	 * Gets client roles by name.
+	 * @param roles the client roles
+	 * @param roleNames the role names
+	 * @return the roles
+	 */
+	private List<RoleRepresentation> getClientRolesByName(RolesResource roles, List<String> roleNames) {
+		List<RoleRepresentation> result = new ArrayList<>();
+		if (roleNames == null) {
+			return result;
+		}
+
+		for (String roleName : roleNames) {
+			try {
+				RoleRepresentation role = roles.get(roleName).toRepresentation();
+				if (role != null) {
+					result.add(role);
+				}
+			} catch (Exception e) {
+				System.err.println("Skipping client role '" + roleName + "'; role not found");
 			}
 		}
 		return result;

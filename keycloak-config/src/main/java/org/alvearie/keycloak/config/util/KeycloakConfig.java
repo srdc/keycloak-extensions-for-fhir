@@ -91,9 +91,11 @@ public class KeycloakConfig {
     public static final String PROP_GROUPS = "groups";
     public static final String PROP_GROUP_ATTRIBUTES = "attributes";
     public static final String PROP_DEFAULT_GROUPS = "defaultGroups";
-    public static final String PROP_ROLES = "roles";
+    public static final String PROP_REALM_ROLES = "realmRoles";
+    public static final String PROP_CLIENT_ROLES = "clientRoles";
     public static final String PROP_ROLE_DESCRIPTION = "description";
     public static final String PROP_USER_REALM_ROLES = "realmRoles";
+    public static final String PROP_USER_CLIENT_ROLES = "clientRoles";
     public static final String PROP_GROUP_REALM_ROLES = "realmRoles";
     public static final String PROP_USERS = "users";
     public static final String PROP_USER_EMAIL = "email";
