@@ -180,6 +180,16 @@ public class KeycloakConfigurator {
 			}
 		}
 
+		// Sync client realm-role scope mappings before applying fullScopeAllowed.
+		// Realm roles must exist before their representations can be resolved.
+		if (clientsPg != null) {
+			syncClientRealmRoleMappings(
+					realms.realm(realmName).clients(),
+					realms.realm(realmName).roles(),
+					clientsPg
+			);
+		}
+
 		// Enable unmanaged attributes
 		RealmResource realmResource = adminClient.realm(realmName);
 		UserProfileResource userProfile = realmResource.users().userProfile();
@@ -1464,6 +1474,48 @@ public class KeycloakConfigurator {
 			List<RoleRepresentation> desiredRoles = getRealmRolesByName(roles, desiredRoleNames);
 
 			syncRoleMappings(realmLevelScope, desiredRoles);
+		}
+	}
+
+	/**
+	 * Syncs client realm-role scope mappings and applies the optional full-scope setting.
+	 * Scope mappings are reconciled first so a client does not briefly have full scope
+	 * disabled without its configured realm roles.
+	 *
+	 * @param clients the clients resource
+	 * @param roles the realm roles resource
+	 * @param clientsPg the clients property group
+	 * @throws Exception an Exception
+	 */
+	void syncClientRealmRoleMappings(ClientsResource clients, RolesResource roles,
+									PropertyGroup clientsPg) throws Exception {
+		for (PropertyEntry clientPe : clientsPg.getProperties()) {
+			String clientId = clientPe.getName();
+			PropertyGroup clientPg = clientsPg.getPropertyGroup(clientId);
+			ClientRepresentation client = getClientByClientId(clients, clientId);
+			if (client == null) {
+				throw new IllegalArgumentException("Unable to configure client scope mappings for client '"
+						+ clientId + "': client does not exist");
+			}
+
+			ClientResource clientResource = clients.get(client.getId());
+			PropertyGroup scopeMappingsPg = clientPg.getPropertyGroup(KeycloakConfig.PROP_CLIENT_SCOPE_MAPPINGS);
+			if (scopeMappingsPg != null) {
+				List<String> desiredRoleNames =
+						scopeMappingsPg.getStringListProperty(KeycloakConfig.PROP_REALM_ROLES);
+				if (desiredRoleNames != null) {
+					RoleScopeResource realmLevelScope = clientResource.getScopeMappings().realmLevel();
+					List<RoleRepresentation> desiredRoles = getRealmRolesByName(roles, desiredRoleNames);
+					syncRoleMappings(realmLevelScope, desiredRoles);
+				}
+			}
+
+			Boolean fullScopeAllowed =
+					clientPg.getBooleanProperty(KeycloakConfig.PROP_CLIENT_FULL_SCOPE_ALLOWED);
+			if (fullScopeAllowed != null) {
+				client.setFullScopeAllowed(fullScopeAllowed);
+				clientResource.update(client);
+			}
 		}
 	}
 

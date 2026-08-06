@@ -65,6 +65,7 @@ public class KeycloakConfig {
     public static final String PROP_CLIENT_SECRET = "secret";
     public static final String PROP_CLIENT_DESCRIPTION = "description";
     public static final String PROP_CLIENT_CONSENT_REQUIRED = "consentRequired";
+    public static final String PROP_CLIENT_FULL_SCOPE_ALLOWED = "fullScopeAllowed";
     public static final String PROP_CLIENT_PUBLIC_CLIENT = "publicClient";
     public static final String PROP_CLIENT_AUTHENTICATOR_TYPE = "clientAuthenticatorType";
     public static final String PROP_CLIENT_BEARER_ONLY = "bearerOnly";
@@ -77,6 +78,7 @@ public class KeycloakConfig {
     public static final String PROP_CLIENT_WEB_ORIGINS = "webOrigins";
     public static final String PROP_CLIENT_STANDARD_FLOW_ENABLED = "standardFlowEnabled";
     public static final String PROP_CLIENT_SERVICE_ACCOUNTS_ENABLED = "serviceAccountsEnabled";
+    public static final String PROP_CLIENT_SCOPE_MAPPINGS = "scopeMappings";
     public static final String PROP_CLIENT_ATTRIBUTES = "attributes";
     public static final String PROP_CLIENT_ATTR_DEVICE_AUTH_GRANT_ENABLED = "oauth2.device.authorization.grant.enabled";
     public static final String PROP_CLIENT_ATTR_PKCE_METHOD = "pkce.code.challenge.method";
