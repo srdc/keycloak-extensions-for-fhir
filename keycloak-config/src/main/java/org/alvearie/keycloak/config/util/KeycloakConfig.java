@@ -40,6 +40,9 @@ public class KeycloakConfig {
     public static final String PROP_REALM_ENABLED = "enabled";
     public static final String PROP_REALM_ACCESS_TOKEN_LIFESPAN = "accessTokenLifespan";
     public static final String PROP_REALM_SSO_SESSION_IDLE_TIMEOUT = "ssoSessionIdleTimeout";
+    public static final String PROP_REALM_LOGIN_THEME = "loginTheme";
+    public static final String PROP_REALM_REMEMBER_ME = "rememberMe";
+    public static final String PROP_REALM_RESET_PASSWORD_ALLOWED = "resetPasswordAllowed";
     public static final String PROP_CLIENT_SCOPES = "clientScopes";
     public static final String PROP_CLIENT_SCOPE_DESCRIPTION = "description";
     public static final String PROP_CLIENT_SCOPE_PROTOCOL = "protocol";

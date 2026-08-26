@@ -246,6 +246,19 @@ public class KeycloakConfigurator {
 			realm.setSsoSessionIdleTimeout(ssoSessionIdleTimeout);
 		}
 
+		String loginTheme = realmPg.getStringProperty(KeycloakConfig.PROP_REALM_LOGIN_THEME);
+		if (loginTheme != null) {
+			realm.setLoginTheme(loginTheme);
+		}
+		Boolean rememberMe = realmPg.getBooleanProperty(KeycloakConfig.PROP_REALM_REMEMBER_ME);
+		if (rememberMe != null) {
+			realm.setRememberMe(rememberMe);
+		}
+		Boolean resetPasswordAllowed = realmPg.getBooleanProperty(KeycloakConfig.PROP_REALM_RESET_PASSWORD_ALLOWED);
+		if (resetPasswordAllowed != null) {
+			realm.setResetPasswordAllowed(resetPasswordAllowed);
+		}
+
 		realm.setEnabled(realmPg.getBooleanProperty(KeycloakConfig.PROP_REALM_ENABLED));
 		realms.realm(realmName).update(realm);
 	}
